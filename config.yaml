@@ -1,0 +1,32 @@
+# environment: "dev", "test", "stg", "prod"
+environment: "prod"
+
+# mode: "batch", "daemon"
+mode: "daemon"
+
+data:
+  base: "/var/lib/finance/data"
+
+kafka:
+  bootstrap.servers: "192.168.33.10:39092"
+  topics: 
+    processor: "processor"
+
+batch: 
+  start:
+    year: 2018
+    month: 11
+    day: 12
+  end:
+    year: 2018
+    month: 11
+    day: 16
+
+daemon:
+  cron: "0 5 15-19 * * *"
+
+twse:
+  url: "http://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=%s&type=ALLBUT0999&_=%d"
+  referer: "http://www.twse.com.tw/zh/page/trading/exchange/MI_INDEX.html"
+  data: "/twse"
+
