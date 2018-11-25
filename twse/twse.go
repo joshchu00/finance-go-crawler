@@ -60,15 +60,16 @@ func Process(url string, referer string, t time.Time, path string, isFinished bo
 
 	message := &protobuf.Processor{
 		Exchange:   "TWSE",
+		Period:     "1d",
 		Datetime:   datetime.GetMilliSecond(t),
 		Path:       path,
 		IsFinished: isFinished,
 	}
 
-	bytes, err = proto.Marshal(message)
-	if err != nil {
+	if bytes, err = proto.Marshal(message); err != nil {
 		return
 	}
+
 	producer.Produce(topic, 0, bytes)
 
 	return

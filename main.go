@@ -61,15 +61,16 @@ var environment, mode string
 
 func process(start time.Time, end time.Time) (err error) {
 
+	// processor topic
+	var processorTopic string
+	processorTopic = fmt.Sprintf("%s_%s", viper.GetString("kafka.topics.processor"), environment)
+
 	// processor producer
 	var processorProducer *kafka.Producer
 	if processorProducer, err = kafka.NewProducer(viper.GetString("kafka.bootstrap.servers")); err != nil {
 		return
 	}
 	defer processorProducer.Close()
-
-	var processorTopic string
-	processorTopic = fmt.Sprintf("%s-%s", viper.GetString("kafka.topics.processor"), environment)
 
 	for dt := start; !dt.After(end); dt = dt.AddDate(0, 0, 1) {
 
@@ -87,7 +88,7 @@ func process(start time.Time, end time.Time) (err error) {
 			return
 		}
 
-		time.Sleep(3 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 
 	return
