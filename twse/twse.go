@@ -15,7 +15,7 @@ import (
 	"github.com/joshchu00/finance-protobuf"
 )
 
-func GetCloseTime(year int, month time.Month, day int) (t time.Time, err error) {
+func GetCloseTime(year int, month int, day int) (t time.Time, err error) {
 
 	var location *time.Location
 	location, err = time.LoadLocation("Asia/Taipei")
@@ -23,7 +23,7 @@ func GetCloseTime(year int, month time.Month, day int) (t time.Time, err error) 
 		return
 	}
 
-	t = time.Date(year, month, day, 13, 30, 0, 0, location)
+	t = time.Date(year, time.Month(month), day, 13, 30, 0, 0, location)
 
 	return
 }

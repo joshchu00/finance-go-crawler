@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/spf13/viper"
-
+	"github.com/joshchu00/finance-go-common/config"
 	"github.com/joshchu00/finance-go-common/kafka"
 	"github.com/joshchu00/finance-go-crawler/twse"
 	"github.com/robfig/cron"
@@ -26,48 +24,28 @@ func init() {
 	log.SetPrefix("CRAWLER ")
 	log.SetFlags(log.LstdFlags | log.LUTC | log.Lshortfile)
 
-	// config
-	replacer := strings.NewReplacer(".", "_")
-	viper.SetEnvKeyReplacer(replacer)
-	viper.AutomaticEnv()
-	viper.SetConfigName("config") // name of config file (without extension)
-	// viper.AddConfigPath("/etc/appname/")   // path to look for the config file in
-	// viper.AddConfigPath("$HOME/.appname")  // call multiple times to add many search paths
-	viper.AddConfigPath(".")   // optionally look for config in the working directory
-	err = viper.ReadInConfig() // Find and read the config file
-	if err != nil {            // Handle errors reading the config file
-		log.Fatalln("FATAL", "Open config file error:", err)
-	}
-
 	// log config
-	log.Println("INFO", "environment:", viper.GetString("environment"))
-	log.Println("INFO", "mode:", viper.GetString("mode"))
-	log.Println("INFO", "data.base:", viper.GetString("data.base"))
-	log.Println("INFO", "kafka.bootstrap.servers:", viper.GetString("kafka.bootstrap.servers"))
-	log.Println("INFO", "kafka.topics.processor:", viper.GetString("kafka.topics.processor"))
-	log.Println("INFO", "batch.start.year:", viper.GetInt("batch.start.year"))
-	log.Println("INFO", "batch.start.month:", viper.GetInt("batch.start.month"))
-	log.Println("INFO", "batch.start.day:", viper.GetInt("batch.start.day"))
-	log.Println("INFO", "batch.end.year:", viper.GetInt("batch.end.year"))
-	log.Println("INFO", "batch.end.month:", viper.GetInt("batch.end.month"))
-	log.Println("INFO", "batch.end.day:", viper.GetInt("batch.end.day"))
-	log.Println("INFO", "daemon.cron:", viper.GetString("daemon.cron"))
-	log.Println("INFO", "twse.url:", viper.GetString("twse.url"))
-	log.Println("INFO", "twse.referer:", viper.GetString("twse.referer"))
-	log.Println("INFO", "twse.data:", viper.GetString("twse.data"))
+	log.Println("INFO", "Environment:", config.Environment())
+	log.Println("INFO", "LogDirectory:", config.LogDirectory())
+	log.Println("INFO", "DataDirectory:", config.DataDirectory())
+	log.Println("INFO", "KafkaBootstrapServers:", config.KafkaBootstrapServers())
+	log.Println("INFO", "KafkaProcessorTopic:", config.KafkaProcessorTopic())
+	log.Println("INFO", "CrawlerMode:", config.CrawlerMode())
+	log.Println("INFO", "CrawlerBatchStartTime:", fmt.Sprint(config.CrawlerBatchStartTime()))
+	log.Println("INFO", "CrawlerBatchEndTime:", fmt.Sprint(config.CrawlerBatchEndTime()))
+	log.Println("INFO", "CrawlerDaemonCron:", config.CrawlerDaemonCron())
+	log.Println("INFO", "TWSEURL:", config.TWSEURL())
+	log.Println("INFO", "TWSEReferer:", config.TWSEReferer())
+	log.Println("INFO", "TWSEDataDirectory:", config.TWSEDataDirectory())
 }
 
 var environment, mode string
 
 func process(start time.Time, end time.Time) (err error) {
 
-	// processor topic
-	var processorTopic string
-	processorTopic = fmt.Sprintf("%s_%s", viper.GetString("kafka.topics.processor"), environment)
-
 	// processor producer
 	var processorProducer *kafka.Producer
-	if processorProducer, err = kafka.NewProducer(viper.GetString("kafka.bootstrap.servers")); err != nil {
+	if processorProducer, err = kafka.NewProducer(config.KafkaBootstrapServers()); err != nil {
 		return
 	}
 	defer processorProducer.Close()
@@ -77,13 +55,13 @@ func process(start time.Time, end time.Time) (err error) {
 		isFinished := dt.Equal(end)
 
 		if err = twse.Process(
-			viper.GetString("twse.url"),
-			viper.GetString("twse.referer"),
+			config.TWSEURL(),
+			config.TWSEReferer(),
 			dt,
-			viper.GetString("data.base")+viper.GetString("twse.data"),
+			config.TWSEDataDirectory(),
 			isFinished,
 			processorProducer,
-			processorTopic,
+			config.KafkaProcessorTopic(),
 		); err != nil {
 			return
 		}
@@ -102,11 +80,11 @@ func batchProcess() {
 
 	var start, end time.Time
 
-	if start, err = twse.GetCloseTime(viper.GetInt("batch.start.year"), time.Month(viper.GetInt("batch.start.month")), viper.GetInt("batch.start.day")); err != nil {
+	if start, err = twse.GetCloseTime(config.CrawlerBatchStartTime()); err != nil {
 		log.Panicln("PANIC", "GetCloseTime", err)
 	}
 
-	if end, err = twse.GetCloseTime(viper.GetInt("batch.end.year"), time.Month(viper.GetInt("batch.end.month")), viper.GetInt("batch.end.day")); err != nil {
+	if end, err = twse.GetCloseTime(config.CrawlerBatchEndTime()); err != nil {
 		log.Panicln("PANIC", "GetCloseTime", err)
 	}
 
@@ -122,7 +100,8 @@ func daemonProcess() {
 	var err error
 
 	var dt time.Time
-	if dt, err = twse.GetCloseTime(time.Now().Date()); err != nil {
+	dt = time.Now()
+	if dt, err = twse.GetCloseTime(dt.Year(), int(dt.Month()), dt.Day()); err != nil {
 		log.Panicln("PANIC", "GetCloseTime", err)
 	}
 
@@ -136,20 +115,20 @@ func main() {
 	log.Println("INFO", "Starting crawler...")
 
 	// environment
-	environment = viper.GetString("environment")
+	environment = config.Environment()
 
 	if environment != "dev" && environment != "test" && environment != "stg" && environment != "prod" {
 		log.Panicln("PANIC", "Unknown environment")
 	}
 
 	// mode
-	mode = viper.GetString("mode")
+	mode = config.CrawlerMode()
 
 	if mode == "batch" {
 		batchProcess()
 	} else if mode == "daemon" {
 		c := cron.New()
-		c.AddFunc(viper.GetString("daemon.cron"), daemonProcess)
+		c.AddFunc(config.CrawlerDaemonCron(), daemonProcess)
 		c.Start()
 		select {}
 	} else {
