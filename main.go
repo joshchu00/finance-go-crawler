@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/joshchu00/finance-go-common/config"
 	"github.com/joshchu00/finance-go-common/kafka"
 	"github.com/joshchu00/finance-go-common/logger"
+	"github.com/joshchu00/finance-go-common/datetime"
 	"github.com/joshchu00/finance-go-crawler/twse"
 	"github.com/robfig/cron"
 )
@@ -21,23 +21,27 @@ func init() {
 	logger.Init(config.LogDirectory(), "crawler")
 
 	// log config
-	log.Println("INFO", "Environment:", config.Environment())
-	log.Println("INFO", "LogDirectory:", config.LogDirectory())
-	log.Println("INFO", "DataDirectory:", config.DataDirectory())
-	log.Println("INFO", "KafkaBootstrapServers:", config.KafkaBootstrapServers())
-	log.Println("INFO", "KafkaProcessorTopic:", config.KafkaProcessorTopic())
-	log.Println("INFO", "CrawlerMode:", config.CrawlerMode())
-	log.Println("INFO", "CrawlerBatchStartTime:", fmt.Sprint(config.CrawlerBatchStartTime()))
-	log.Println("INFO", "CrawlerBatchEndTime:", fmt.Sprint(config.CrawlerBatchEndTime()))
-	log.Println("INFO", "CrawlerDaemonCron:", config.CrawlerDaemonCron())
-	log.Println("INFO", "TWSEURL:", config.TWSEURL())
-	log.Println("INFO", "TWSEReferer:", config.TWSEReferer())
-	log.Println("INFO", "TWSEDataDirectory:", config.TWSEDataDirectory())
+	logger.Info(fmt.Sprintf("%s: %s", "Environment", config.Environment()))
+	logger.Info(fmt.Sprintf("%s: %s", "LogDirectory", config.LogDirectory()))
+	logger.Info(fmt.Sprintf("%s: %s", "DataDirectory", config.DataDirectory()))
+	logger.Info(fmt.Sprintf("%s: %s", "KafkaBootstrapServers", config.KafkaBootstrapServers()))
+	logger.Info(fmt.Sprintf("%s: %s", "KafkaProcessorTopic", config.KafkaProcessorTopic()))
+	logger.Info(fmt.Sprintf("%s: %s", "CrawlerMode", config.CrawlerMode()))
+	logger.Info(fmt.Sprintf("%s: %s", "CrawlerBatchMode", config.CrawlerBatchMode()))
+	logger.Info(fmt.Sprintf("%s: %s", "CrawlerBatchStartTime", fmt.Sprint(config.CrawlerBatchStartTime())))
+	logger.Info(fmt.Sprintf("%s: %s", "CrawlerBatchEndTime", fmt.Sprint(config.CrawlerBatchEndTime())))
+	logger.Info(fmt.Sprintf("%s: %s", "TWSEURL", config.TWSEURL()))
+	logger.Info(fmt.Sprintf("%s: %s", "TWSEReferer", config.TWSEReferer()))
+	logger.Info(fmt.Sprintf("%s: %s", "TWSEDataDirectory", config.TWSEDataDirectory()))
+	logger.Info(fmt.Sprintf("%s: %s", "TWSECron", config.TWSECron()))
+
+	// twse
+	twse.Init()
 }
 
-var environment, mode string
+var environment string
 
-func process(start time.Time, end time.Time) (err error) {
+func process(mode string, start int64, end int64) (err error) {
 
 	// processor producer
 	var processorProducer *kafka.Producer
@@ -46,16 +50,15 @@ func process(start time.Time, end time.Time) (err error) {
 	}
 	defer processorProducer.Close()
 
-	for dt := start; !dt.After(end); dt = dt.AddDate(0, 0, 1) {
-
-		isFinished := dt.Equal(end)
+	for ts := start; ts <= end; ts = datetime.AddOneDay(ts) {
 
 		if err = twse.Process(
+			mode,
 			config.TWSEURL(),
 			config.TWSEReferer(),
-			dt,
+			ts,
 			config.TWSEDataDirectory(),
-			isFinished,
+			ts == end,
 			processorProducer,
 			config.KafkaProcessorTopic(),
 		); err != nil {
@@ -70,64 +73,52 @@ func process(start time.Time, end time.Time) (err error) {
 
 func batchProcess() {
 
-	log.Println("INFO", "Starting batch process...")
+	logger.Info("Starting batch process...")
 
-	var err error
+	start := twse.GetCloseTime(config.CrawlerBatchStartTime())
+	end := twse.GetCloseTime(config.CrawlerBatchEndTime())
 
-	var start, end time.Time
-
-	if start, err = twse.GetCloseTime(config.CrawlerBatchStartTime()); err != nil {
-		log.Panicln("PANIC", "GetCloseTime", err)
-	}
-
-	if end, err = twse.GetCloseTime(config.CrawlerBatchEndTime()); err != nil {
-		log.Panicln("PANIC", "GetCloseTime", err)
-	}
-
-	if err = process(start, end); err != nil {
-		log.Panicln("PANIC", "process", err)
+	if err := process(config.CrawlerBatchMode(), start, end); err != nil {
+		logger.Panic(fmt.Sprintf("process %v", err))
 	}
 }
 
 func daemonProcess() {
 
-	log.Println("INFO", "Starting daemon process...")
+	logger.Info("Starting daemon process...")
 
-	var err error
+	dt := time.Now()
+	ts := twse.GetCloseTime(dt.Year(), int(dt.Month()), dt.Day())
 
-	var dt time.Time
-	dt = time.Now()
-	if dt, err = twse.GetCloseTime(dt.Year(), int(dt.Month()), dt.Day()); err != nil {
-		log.Panicln("PANIC", "GetCloseTime", err)
-	}
-
-	if err = process(dt, dt); err != nil {
-		log.Panicln("PANIC", "process", err)
+	if err := process("real", ts, ts); err != nil {
+		logger.Panic(fmt.Sprintf("process %v", err))
 	}
 }
 
 func main() {
 
-	log.Println("INFO", "Starting crawler...")
+	logger.Info("Starting crawler...")
 
 	// environment
 	environment = config.Environment()
 
 	if environment != "dev" && environment != "test" && environment != "stg" && environment != "prod" {
-		log.Panicln("PANIC", "Unknown environment")
+		logger.Panic("Unknown environment")
 	}
 
 	// mode
-	mode = config.CrawlerMode()
+	mode := config.CrawlerMode()
 
 	if mode == "batch" {
 		batchProcess()
 	} else if mode == "daemon" {
-		c := cron.New()
-		c.AddFunc(config.CrawlerDaemonCron(), daemonProcess)
-		c.Start()
+		// twse
+		twseCron := cron.New()
+		twseCron.AddFunc(config.TWSECron(), daemonProcess)
+		twseCron.Start()
+
 		select {}
 	} else {
-		log.Panicln("PANIC", "Unknown mode")
+		logger.Panic("Unknown mode")
 	}
 }

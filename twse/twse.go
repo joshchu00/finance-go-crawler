@@ -12,59 +12,71 @@ import (
 	"github.com/joshchu00/finance-go-common/datetime"
 	"github.com/joshchu00/finance-go-common/http"
 	"github.com/joshchu00/finance-go-common/kafka"
+	"github.com/joshchu00/finance-go-common/logger"
 	"github.com/joshchu00/finance-protobuf"
 )
 
-func GetCloseTime(year int, month int, day int) (t time.Time, err error) {
+var location *time.Location
 
-	var location *time.Location
+func Init() {
+	var err error
 	location, err = time.LoadLocation("Asia/Taipei")
 	if err != nil {
-		return
+		log.Fatalln("FATAL", "Get location error:", err)
 	}
-
-	t = time.Date(year, time.Month(month), day, 13, 30, 0, 0, location)
-
-	return
 }
 
-func Process(url string, referer string, t time.Time, path string, isFinished bool, producer *kafka.Producer, topic string) (err error) {
+func GetCloseTime(year int, month int, day int) int64 {
+	return datetime.GetTimestamp(time.Date(year, time.Month(month), day, 13, 30, 0, 0, location))
+}
 
-	log.Println("INFO", "Starting twse process...", t.String())
+func Process(mode string, url string, referer string, ts int64, path string, isFinished bool, producer *kafka.Producer, topic string) (err error) {
 
-	var bytes []byte
+	logger.Info(fmt.Sprintf("%s: %s", "Starting twse process...", datetime.GetTimeString(ts, location)))
 
-	dateString := datetime.GetDateString(t)
-
-	var valid bool
-
-	for i := 0; i < 3 && !valid; i++ {
-
-		if bytes, err = http.Get(fmt.Sprintf(url, dateString, datetime.GetMilliSecond(time.Now())), referer); err != nil {
-			return
-		}
-
-		valid = json.Valid(bytes)
-	}
-
-	if !valid {
-		err = errors.New("Data is unabailable")
-		return
-	}
+	dateString := datetime.GetDateString(ts, location)
 
 	path = fmt.Sprintf("%s/%s.json", path, dateString)
 
-	if err = ioutil.WriteFile(path, bytes, 0644); err != nil {
+	if mode == "real" {
+
+		var data []byte
+
+		var valid bool
+
+		for i := 0; i < 3 && !valid; i++ {
+
+			if data, err = http.Get(fmt.Sprintf(url, dateString, datetime.GetTimestamp(time.Now())), referer); err != nil {
+				return
+			}
+
+			valid = json.Valid(data)
+		}
+
+		if !valid {
+			err = errors.New("Data is unabailable")
+			return
+		}
+
+		if err = ioutil.WriteFile(path, data, 0644); err != nil {
+			return
+		}
+	} else if mode == "virtual" {
+
+	} else {
+		err = errors.New("Unknown batch mode")
 		return
 	}
 
 	message := &protobuf.Processor{
 		Exchange:   "TWSE",
 		Period:     "1d",
-		Datetime:   datetime.GetMilliSecond(t),
+		Datetime:   ts,
 		Path:       path,
 		IsFinished: isFinished,
 	}
+
+	var bytes []byte
 
 	if bytes, err = proto.Marshal(message); err != nil {
 		return
