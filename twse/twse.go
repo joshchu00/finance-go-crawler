@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/joshchu00/finance-go-common/config"
 	"github.com/joshchu00/finance-go-common/datetime"
 	"github.com/joshchu00/finance-go-common/http"
 	"github.com/joshchu00/finance-go-common/kafka"
@@ -26,19 +27,20 @@ func Init() {
 	}
 }
 
-func GetCloseTime(year int, month int, day int) int64 {
+func getCloseTime(year int, month int, day int) int64 {
 	return datetime.GetTimestamp(time.Date(year, time.Month(month), day, 13, 30, 0, 0, location))
 }
 
-func Process(kind string, url string, referer string, ts int64, path string, isFinished bool, producer *kafka.Producer, topic string) (err error) {
+func craw(kind string, ts int64, url string, referer string, dataDirectory string) (path string, err error) {
 
-	logger.Info(fmt.Sprintf("%s: %s", "Starting twse process...", datetime.GetTimeString(ts, location)))
+	logger.Info(fmt.Sprintf("%s: %s", "Starting twse craw...", datetime.GetTimeString(ts, location)))
 
 	dateString := datetime.GetDateString(ts, location)
 
-	path = fmt.Sprintf("%s/%s.json", path, dateString)
+	path = fmt.Sprintf("%s/%s.json", dataDirectory, dateString)
 
-	if kind == "real" {
+	switch kind {
+	case config.CrawlerBatchKindReal:
 
 		var data []byte
 
@@ -54,35 +56,77 @@ func Process(kind string, url string, referer string, ts int64, path string, isF
 		}
 
 		if !valid {
-			err = errors.New("Data is unabailable")
+			err = errors.New("Data is unavailable")
 			return
 		}
 
 		if err = ioutil.WriteFile(path, data, 0644); err != nil {
 			return
 		}
-	} else if kind == "virtual" {
-
-	} else {
+	case config.CrawlerBatchKindVirtual:
+	default:
 		err = errors.New("Unknown batch kind")
 		return
 	}
 
-	message := &protobuf.Processor{
-		Exchange:   "TWSE",
-		Period:     "1d",
-		Datetime:   ts,
-		Path:       path,
-		IsFinished: isFinished,
-	}
+	return
+}
 
-	var bytes []byte
+func Process(mode string, kind string, startTime time.Time, endTime time.Time, url string, referer string, dataDirectory string, producer *kafka.Producer, topic string) (err error) {
 
-	if bytes, err = proto.Marshal(message); err != nil {
+	logger.Info("Starting twse process...")
+
+	var start, end int64
+
+	switch mode {
+	case config.CrawlerModeBatch:
+		start = getCloseTime(startTime.Year(), int(startTime.Month()), startTime.Day())
+		end = getCloseTime(endTime.Year(), int(endTime.Month()), endTime.Day())
+	case config.CrawlerModeDaemon:
+		kind = config.CrawlerBatchKindReal
+		endTime = time.Now()
+		end = getCloseTime(endTime.Year(), int(endTime.Month()), endTime.Day())
+		start = end
+	default:
+		err = errors.New("Unknown mode")
 		return
 	}
 
-	producer.Produce(topic, 0, bytes)
+	for ts := start; ts <= end; ts = datetime.AddOneDay(ts) {
+
+		var path string
+
+		path, err = craw(
+			kind,
+			ts,
+			url,
+			referer,
+			dataDirectory,
+		)
+		if err != nil {
+			return
+		}
+
+		message := &protobuf.Processor{
+			Exchange:      "TWSE",
+			Period:        "1d",
+			Datetime:      ts,
+			Path:          path,
+			Last:          ts == end,
+			FirstDatetime: start,
+		}
+
+		var bytes []byte
+
+		bytes, err = proto.Marshal(message)
+		if err != nil {
+			return
+		}
+
+		producer.Produce(topic, 0, bytes)
+
+		time.Sleep(10 * time.Second)
+	}
 
 	return
 }
