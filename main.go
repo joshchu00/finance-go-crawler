@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/joshchu00/finance-go-common/config"
+	"github.com/joshchu00/finance-go-common/datetime"
 	"github.com/joshchu00/finance-go-common/kafka"
 	"github.com/joshchu00/finance-go-common/logger"
-	"github.com/joshchu00/finance-go-common/datetime"
 	"github.com/joshchu00/finance-go-crawler/twse"
 	"github.com/robfig/cron"
 )
@@ -41,7 +41,7 @@ func init() {
 
 var environment string
 
-func process(mode string, start int64, end int64) (err error) {
+func process(kind string, start int64, end int64) (err error) {
 
 	// processor producer
 	var processorProducer *kafka.Producer
@@ -53,7 +53,7 @@ func process(mode string, start int64, end int64) (err error) {
 	for ts := start; ts <= end; ts = datetime.AddOneDay(ts) {
 
 		if err = twse.Process(
-			mode,
+			kind,
 			config.TWSEURL(),
 			config.TWSEReferer(),
 			ts,
@@ -75,10 +75,11 @@ func batchProcess() {
 
 	logger.Info("Starting batch process...")
 
+	// twse
 	start := twse.GetCloseTime(config.CrawlerBatchStartTime())
 	end := twse.GetCloseTime(config.CrawlerBatchEndTime())
 
-	if err := process(config.CrawlerBatchMode(), start, end); err != nil {
+	if err := process(config.CrawlerBatchKind(), start, end); err != nil {
 		logger.Panic(fmt.Sprintf("process %v", err))
 	}
 }
@@ -87,6 +88,7 @@ func daemonProcess() {
 
 	logger.Info("Starting daemon process...")
 
+	// twse
 	dt := time.Now()
 	ts := twse.GetCloseTime(dt.Year(), int(dt.Month()), dt.Day())
 

@@ -30,7 +30,7 @@ func GetCloseTime(year int, month int, day int) int64 {
 	return datetime.GetTimestamp(time.Date(year, time.Month(month), day, 13, 30, 0, 0, location))
 }
 
-func Process(mode string, url string, referer string, ts int64, path string, isFinished bool, producer *kafka.Producer, topic string) (err error) {
+func Process(kind string, url string, referer string, ts int64, path string, isFinished bool, producer *kafka.Producer, topic string) (err error) {
 
 	logger.Info(fmt.Sprintf("%s: %s", "Starting twse process...", datetime.GetTimeString(ts, location)))
 
@@ -38,7 +38,7 @@ func Process(mode string, url string, referer string, ts int64, path string, isF
 
 	path = fmt.Sprintf("%s/%s.json", path, dateString)
 
-	if mode == "real" {
+	if kind == "real" {
 
 		var data []byte
 
@@ -61,10 +61,10 @@ func Process(mode string, url string, referer string, ts int64, path string, isF
 		if err = ioutil.WriteFile(path, data, 0644); err != nil {
 			return
 		}
-	} else if mode == "virtual" {
+	} else if kind == "virtual" {
 
 	} else {
-		err = errors.New("Unknown batch mode")
+		err = errors.New("Unknown batch kind")
 		return
 	}
 
