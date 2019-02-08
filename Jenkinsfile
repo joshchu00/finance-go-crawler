@@ -1,22 +1,11 @@
-node {
+@Library("library") _
 
-  docker.withTool('docker-latest') {
-
-    def image
-
-    stage('Git Pull') {
-      git url: 'https://github.com/joshchu00/finance-go-crawler.git', branch: 'develop'
-    }
-    stage('Go Build') {
-      sh "${tool name: 'go-1.11', type: 'go'}/bin/go build -a -o main"
-    }
-    stage('Docker Build') {
-      image = docker.build('joshchu00/finance-go-crawler')
-    }
-    stage('Docker Push') {
-      docker.withRegistry('', 'DockerHub') {
-        image.push()
-      }
-    }
-  }
+build {
+  [
+    gitURL = 'https://github.com/joshchu00/finance-go-crawler.git',
+    gitBranch = 'develop',
+    buildLanguage = 'go',
+    buildImage = 'joshchu00/go-build-kafka:1.11.5-alpine',
+    dockerName = 'joshchu00/finance-go-crawler'
+  ]
 }
