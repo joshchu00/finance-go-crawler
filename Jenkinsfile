@@ -1,6 +1,6 @@
 @Library("library") _
 
-build {
+jBuild {
   [
     gitURL = 'https://github.com/joshchu00/finance-go-crawler.git',
     gitBranch = 'develop',
