@@ -14,7 +14,7 @@ import (
 	"github.com/joshchu00/finance-go-common/http"
 	"github.com/joshchu00/finance-go-common/kafka"
 	"github.com/joshchu00/finance-go-common/logger"
-	"github.com/joshchu00/finance-protobuf"
+	protobuf "github.com/joshchu00/finance-protobuf/inside"
 )
 
 var location *time.Location
