@@ -120,14 +120,14 @@ func Process(
 		EndDatetime:   end,
 	}
 
-	logger.Debug(fmt.Sprintf("%s %v", topic, message))
-
 	var bytes []byte
 
 	bytes, err = proto.Marshal(message)
 	if err != nil {
 		return
 	}
+
+	logger.Debug(fmt.Sprintf("%s %v", topic, message))
 
 	err = producer.Produce(topic, 0, bytes)
 
