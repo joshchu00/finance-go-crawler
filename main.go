@@ -32,9 +32,6 @@ func init() {
 	logger.Info(fmt.Sprintf("%s: %s", "TWSEReferer", config.TWSEReferer()))
 	logger.Info(fmt.Sprintf("%s: %s", "TWSEDataDirectory", config.TWSEDataDirectory()))
 	logger.Info(fmt.Sprintf("%s: %s", "TWSECron", config.TWSECron()))
-
-	// twse
-	twse.Init()
 }
 
 var environmentName string
@@ -52,12 +49,19 @@ func process() {
 	}
 	defer processorProducer.Close()
 
+	startTime := config.CrawlerBatchStartTime()
+	endTime := config.CrawlerBatchEndTime()
+
 	// twse
 	err = twse.Process(
 		config.CrawlerMode(),
 		config.CrawlerBatchKind(),
-		config.CrawlerBatchStartTime(),
-		config.CrawlerBatchEndTime(),
+		startTime.Year(),
+		int(startTime.Month()),
+		startTime.Day(),
+		endTime.Year(),
+		int(endTime.Month()),
+		endTime.Day(),
 		config.TWSEURL(),
 		config.TWSEReferer(),
 		config.TWSEDataDirectory(),

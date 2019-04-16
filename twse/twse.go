@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/joshchu00/finance-go-common/config"
+	"github.com/joshchu00/finance-go-common/data"
 	"github.com/joshchu00/finance-go-common/datetime"
 	"github.com/joshchu00/finance-go-common/http"
 	"github.com/joshchu00/finance-go-common/kafka"
@@ -17,116 +17,119 @@ import (
 	protobuf "github.com/joshchu00/finance-protobuf/inside"
 )
 
-var location *time.Location
-
-func Init() {
-	var err error
-	location, err = time.LoadLocation("Asia/Taipei")
-	if err != nil {
-		log.Fatalln("FATAL", "Get location error:", err)
-	}
-}
-
-func getCloseTime(year int, month int, day int) int64 {
+func getCloseTime(year int, month int, day int, location *time.Location) int64 {
 	return datetime.GetTimestamp(time.Date(year, time.Month(month), day, 13, 30, 0, 0, location))
 }
 
-func craw(kind string, ts int64, url string, referer string, dataDirectory string) (path string, err error) {
+func craw(url string, dateString string, referer string, path string) (err error) {
 
-	logger.Info(fmt.Sprintf("%s: %s", "Starting twse craw...", datetime.GetTimeString(ts, location)))
+	logger.Info(fmt.Sprintf("%s: %s", "Starting twse craw...", path))
 
-	dateString := datetime.GetDateString(ts, location)
+	var bytes []byte
 
-	path = fmt.Sprintf("%s/%s.json", dataDirectory, dateString)
+	var valid bool
 
-	switch kind {
-	case config.CrawlerBatchKindReal:
+	for i := 0; i < 3 && !valid; i++ {
 
-		var data []byte
-
-		var valid bool
-
-		for i := 0; i < 3 && !valid; i++ {
-
-			if data, err = http.Get(fmt.Sprintf(url, dateString, datetime.GetTimestamp(time.Now())), referer); err != nil {
-				return
-			}
-
-			valid = json.Valid(data)
-		}
-
-		if !valid {
-			err = errors.New("Data is unavailable")
+		if bytes, err = http.Get(fmt.Sprintf(url, dateString, datetime.GetTimestamp(time.Now())), referer); err != nil {
 			return
 		}
 
-		if err = ioutil.WriteFile(path, data, 0644); err != nil {
-			return
-		}
-	case config.CrawlerBatchKindVirtual:
-	default:
-		err = errors.New("Unknown batch kind")
+		valid = json.Valid(bytes)
+	}
+
+	if !valid {
+		err = errors.New("Data is unavailable")
+		return
+	}
+
+	if err = ioutil.WriteFile(path, bytes, 0644); err != nil {
 		return
 	}
 
 	return
 }
 
-func Process(mode string, kind string, startTime time.Time, endTime time.Time, url string, referer string, dataDirectory string, producer *kafka.Producer, topic string) (err error) {
+func Process(
+	mode string,
+	kind string,
+	startTimeYear int,
+	startTimeMonth int,
+	startTimeDay int,
+	endTimeYear int,
+	endTimeMonth int,
+	endTimeDay int,
+	url string,
+	referer string,
+	dataDirectory string,
+	producer *kafka.Producer,
+	topic string,
+) (err error) {
 
 	logger.Info("Starting twse process...")
+
+	var location *time.Location
+	location, err = time.LoadLocation("Asia/Taipei")
+	if err != nil {
+		return
+	}
 
 	var start, end int64
 
 	switch mode {
 	case config.CrawlerModeBatch:
-		start = getCloseTime(startTime.Year(), int(startTime.Month()), startTime.Day())
-		end = getCloseTime(endTime.Year(), int(endTime.Month()), endTime.Day())
+		start = getCloseTime(startTimeYear, int(startTimeMonth), startTimeDay, location)
+		end = getCloseTime(endTimeYear, int(endTimeMonth), endTimeDay, location)
 	case config.CrawlerModeDaemon:
 		kind = config.CrawlerBatchKindReal
-		endTime = time.Now()
-		end = getCloseTime(endTime.Year(), int(endTime.Month()), endTime.Day())
-		start = end
+		startTime := time.Now().In(location)
+		start = getCloseTime(startTime.Year(), int(startTime.Month()), startTime.Day(), location)
+		end = start
 	default:
 		err = errors.New("Unknown mode")
 		return
 	}
 
-	for ts := start; ts <= end; ts = datetime.AddOneDay(ts) {
+	switch kind {
+	case config.CrawlerBatchKindReal:
+		for ts := start; ts <= end; ts = datetime.AddOneDay(ts) {
 
-		var path string
+			dateString := datetime.GetDateString(ts, location)
+			path := data.GetPath(dataDirectory, dateString)
 
-		path, err = craw(
-			kind,
-			ts,
-			url,
-			referer,
-			dataDirectory,
-		)
-		if err != nil {
-			return
+			err = craw(
+				url,
+				dateString,
+				referer,
+				path,
+			)
+			if err != nil {
+				return
+			}
+
+			time.Sleep(10 * time.Second)
 		}
-
-		message := &protobuf.Processor{
-			Exchange:      "TWSE",
-			Period:        "1d",
-			Datetime:      ts,
-			Path:          path,
-			Last:          ts == end,
-			FirstDatetime: start,
-		}
-
-		var bytes []byte
-
-		bytes, err = proto.Marshal(message)
-		if err != nil {
-			return
-		}
-
-		producer.Produce(topic, 0, bytes)
-
-		time.Sleep(10 * time.Second)
+	case config.CrawlerBatchKindVirtual:
+	default:
+		err = errors.New("Unknown kind")
+		return
 	}
+
+	message := &protobuf.Processor{
+		Exchange:      "TWSE",
+		Period:        "1d",
+		StartDatetime: start,
+		EndDatetime:   end,
+	}
+
+	var bytes []byte
+
+	bytes, err = proto.Marshal(message)
+	if err != nil {
+		return
+	}
+
+	producer.Produce(topic, 0, bytes)
 
 	return
 }
