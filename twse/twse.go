@@ -127,9 +127,9 @@ func Process(
 		return
 	}
 
-	logger.Debug(fmt.Sprintf("%s %v", topic, message))
-
 	err = producer.Produce(topic, 0, bytes)
+
+	logger.Debug(fmt.Sprintf("%s %v %s %v", topic, message, string(bytes), err))
 
 	return
 }
