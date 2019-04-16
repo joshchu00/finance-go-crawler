@@ -43,9 +43,7 @@ func craw(url string, dateString string, referer string, path string) (err error
 		return
 	}
 
-	if err = ioutil.WriteFile(path, bytes, 0644); err != nil {
-		return
-	}
+	err = ioutil.WriteFile(path, bytes, 0644)
 
 	return
 }
@@ -129,7 +127,7 @@ func Process(
 		return
 	}
 
-	producer.Produce(topic, 0, bytes)
+	err = producer.Produce(topic, 0, bytes)
 
 	return
 }
