@@ -72,6 +72,8 @@ func process() {
 		logger.Panic(fmt.Sprintf("twse.Process %v", err))
 	}
 
+	processorProducer.Flush(5000)
+
 	return
 }
 
