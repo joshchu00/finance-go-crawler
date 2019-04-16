@@ -3,7 +3,7 @@ module github.com/joshchu00/finance-go-crawler
 require (
 	github.com/golang/protobuf v1.2.0
 	github.com/joshchu00/finance-go-common v0.1.1-0.20190416135245-b0770b874d76
-	github.com/joshchu00/finance-protobuf v0.1.1-0.20190416051247-4a3186d67741
+	github.com/joshchu00/finance-protobuf v0.1.1-0.20190416160335-0bc74a6adc5f
 	github.com/robfig/cron v0.0.0-20180505203441-b41be1df6967
 	github.com/spf13/afero v1.2.0 // indirect
 	github.com/spf13/viper v1.3.1 // indirect
