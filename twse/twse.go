@@ -27,6 +27,10 @@ func craw(ts int64, location *time.Location, url string, referer string, dataDir
 
 	dateString := datetime.GetDateString(ts, location)
 
+	headers := map[string]string{
+		"Referer": referer,
+	}
+
 	var bytes []byte
 
 	var valid bool
@@ -35,7 +39,7 @@ func craw(ts int64, location *time.Location, url string, referer string, dataDir
 
 		bytes, err = http.Get(
 			fmt.Sprintf(url, dateString, datetime.GetTimestamp(time.Now())),
-			referer,
+			headers,
 		)
 		if err != nil {
 			return
