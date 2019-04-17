@@ -21,9 +21,11 @@ func getCloseTime(year int, month int, day int, location *time.Location) int64 {
 	return datetime.GetTimestamp(time.Date(year, time.Month(month), day, 13, 30, 0, 0, location))
 }
 
-func craw(url string, dateString string, referer string, path string) (err error) {
+func craw(ts int64, location *time.Location, url string, referer string, dataDirectory string) (err error) {
 
-	logger.Info(fmt.Sprintf("%s: %s", "Starting twse craw...", path))
+	logger.Info(fmt.Sprintf("%s: %d", "Starting twse.craw...", ts))
+
+	dateString := datetime.GetDateString(ts, location)
 
 	var bytes []byte
 
@@ -31,7 +33,11 @@ func craw(url string, dateString string, referer string, path string) (err error
 
 	for i := 0; i < 3 && !valid; i++ {
 
-		if bytes, err = http.Get(fmt.Sprintf(url, dateString, datetime.GetTimestamp(time.Now())), referer); err != nil {
+		bytes, err = http.Get(
+			fmt.Sprintf(url, dateString, datetime.GetTimestamp(time.Now())),
+			referer,
+		)
+		if err != nil {
 			return
 		}
 
@@ -43,7 +49,7 @@ func craw(url string, dateString string, referer string, path string) (err error
 		return
 	}
 
-	err = ioutil.WriteFile(path, bytes, 0644)
+	err = ioutil.WriteFile(data.GetPath(dataDirectory, dateString), bytes, 0644)
 
 	return
 }
@@ -64,7 +70,7 @@ func Process(
 	topic string,
 ) (err error) {
 
-	logger.Info("Starting twse process...")
+	logger.Info("Starting twse.Process...")
 
 	var location *time.Location
 	location, err = time.LoadLocation("Asia/Taipei")
@@ -92,14 +98,12 @@ func Process(
 	case config.CrawlerBatchKindReal:
 		for ts := start; ts <= end; ts = datetime.AddOneDay(ts) {
 
-			dateString := datetime.GetDateString(ts, location)
-			path := data.GetPath(dataDirectory, dateString)
-
 			err = craw(
+				ts,
+				location,
 				url,
-				dateString,
 				referer,
-				path,
+				dataDirectory,
 			)
 			if err != nil {
 				return
